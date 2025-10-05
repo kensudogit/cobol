@@ -1,0 +1,17 @@
+=== Blocked Records Test Cases ===
+
+Test Case 1: Basic Blocked Record
+Description: Test basic blocked record reading and writing
+Input: Multiple records in blocks
+Expected: All records should be read and written correctly
+
+Test Case 2: Partial Block
+Description: Test partial block handling
+Input: Block that doesn't contain full number of records
+Expected: Partial block should be handled correctly
+
+Test Case 3: Block Flushing
+Description: Test block flushing when closing file
+Input: Records that don't fill complete block
+Expected: Partial block should be flushed to file
+

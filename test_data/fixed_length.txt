@@ -1,0 +1,1 @@
+RECORD001: This is a fixed length record with exactly 80 characters             RECORD002: Another fixed length record for testing purposes                     RECORD003: Fixed length records are padded with spaces if needed                

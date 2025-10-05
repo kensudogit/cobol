@@ -1,0 +1,149 @@
+# Makefile for COBOL Comprehensive Sample Program
+# Author: COBOL Education Project
+# Date: 2025
+
+# COBOL Compiler Configuration
+COBOL_COMPILER := cobc
+COMPILE_FLAGS := -free -frelax-syntax-check
+DEBUG_FLAGS := -g -fsource-info
+OPTIMIZE_FLAGS := -O2
+
+# Program Files
+PROGRAM_NAME := comprehensive_sample
+SOURCE_FILE := comprehensive_sample.cob
+OBJECT_FILE := comprehensive_sample.o
+EXECUTABLE := comprehensive_sample
+
+# Data Files
+CUSTOMER_MASTER := CUSTOMER.MAST
+SALES_TRANSACTIONS := SALES.TRAN
+REPORT_OUTPUT := DAILY-REPORT.TXT
+SORT_INPUT := SORTINPUT.DAT
+SORT_OUTPUT := SORTOUTPUT.DAT
+SORT_WORK := SORTWORK.DAT
+
+# Directories
+BIN_DIR := bin
+DATA_DIR := data
+
+# Default target
+all: setup compile
+
+# Setup directories and files
+setup:
+	@echo "Setting up environment..."
+	@mkdir -p $(BIN_DIR)
+	@mkdir -p $(DATA_DIR)
+	@echo "Setup complete."
+
+# Compile the program
+compile: setup
+	@echo "Compiling $(PROGRAM_NAME)..."
+	$(COBOL_COMPILER) $(COMPILE_FLAGS) $(DEBUG_FLAGS) -o $(BIN_DIR)/$(EXECUTABLE) $(SOURCE_FILE)
+	@echo "Compilation completed successfully."
+	@echo "Executable: $(BIN_DIR)/$(EXECUTABLE)"
+
+# Compile optimized version
+compile-optimized: setup
+	@echo "Compiling optimized $(PROGRAM_NAME)..."
+	$(COBOL_COMPILER) $(COMPILE_FLAGS) $(OPTIMIZE_FLAGS) -o $(BIN_DIR)/$(EXECUTABLE) $(SOURCE_FILE)
+	@echo "Optimized compilation completed."
+
+# Run the program
+run: compile
+	@echo "Running $(PROGRAM_NAME)..."
+	cd $(BIN_DIR) && ./$(EXECUTABLE)
+
+# Debug run
+debug: compile
+	@echo "Running $(PROGRAM_NAME) with debug..."
+	cd $(BIN_DIR) && ./$(EXECUTABLE)
+
+# Create sample data files
+create-data:
+	@echo "Creating sample data files..."
+	@echo "1234567John Smith           123 Main St           AnytownCA9021012345678901000A20250128                    " > $(DATA_DIR)/$(CUSTOMER_MAINTENANCE_DATABASE)
+	@echo "1234568Jane Doe             456 Oak Ave           SeattleWA9810123456789010001A20250128                    " >> $(DATA_DIR)/$(CUSTOMER_MASTER)
+	@echo "1234569Bob Johnson          789 Pine St           BostonMA0210123456789010002I20250128                    " >> $(DATA_DIR)/$(CUSTOMER_MASTER)
+	@echo "000000011234567PROD-00110000001001000.0000002025012800010000000121234568PROD-0022000000050005000.000000502501280002000000021234568PROD-0031500000150007500.000000113501280003" > $(DATA_DIR)/$(SALES_TRANSACTIONS)
+	@echo "Sample data files created."
+
+# Clean build artifacts
+clean:
+	@echo "Cleaning up..."
+	rm -f $(BIN_DIR)/$(OBJECT_FILE)
+	rm -f $(BIN_DIR)/$(EXECUTABLE)
+	rm -f $(DATA_DIR)/$(CUSTOMER_MASTER)
+	rm -f $(DATA_DIR)/$(SALES_TRANSACTIONS)
+	rm -f $(DATA_DIR)/$(REPORT_OUTPUT)
+	rm -f $(DATA_DIR)/$(SORT_INPUT)
+	rm -f $(DATA_DIR)/$(SORT_OUTPUT)
+	rm -f $(DATA_DIR)/$(SORT_WORK)
+	rm -f *.log
+	@echo "Clean complete."
+
+# Complete clean
+distclean: clean
+	rm -rf $(BIN_DIR)
+	rm -rf $(DATA_DIR)
+	@echo "Distclean complete."
+
+# Install (copy executable to system path)
+install: compile
+	@echo "Installing $(PROGRAM_NAME)..."
+	cp $(BIN_DIR)/$(EXECUTABLE) /usr/local/bin/
+	@echo "Installation complete."
+
+# Uninstall
+uninstall:
+	@echo "Uninstalling $(PROGRAM_NAME)..."
+	rm -f /usr/local/bin/$(EXECUTABLE)
+	@echo "Uninstallation complete。"
+
+# Check syntax only
+syntax:
+	@echo "Checking syntax..."
+	$(COBOL_COMPILER) $(COMPILE_FLAGS) -fsyntax-only $(SOURCE_FILE)
+	@echo "Syntax check complete."
+
+# Run tests
+test: create-data compile run
+	@echo "Running tests..."
+	@echo "Checking report output..."
+	@if [ -f $(DATA_DIR)/$(REPORT_OUTPUT) ]; then \
+		echo "✓ Report file created successfully"; \
+	else \
+		echo "✗ Report file not found"; \
+	fi
+	@echo "Tests completed."
+
+# Show help
+help:
+	@echo "COBOL Comprehensive Sample Program Makefile"
+	@echo "============================================="
+	@echo "Available targets:"
+	@echo "  all           - Setup and compile (default)"
+	@echo "  setup         - Create directories"
+	@echo "  compile       - Compile the program"
+	@echo "  compile-optimized - Compile with optimization"
+	@echo "  run           - Compile and run the program"
+	@echo "  debug         - Compile and run with debug info"
+	@echo "  create-data   - Create sample data files"
+	@echo "  test          - Create data, compile, and run tests"
+	@echo "  syntax        - Check syntax only"
+	@echo "  clean         - Remove build artifacts"
+	@echo "  distclean     - Remove all generated files"
+	@echo "  install       - Install executable to system"
+	@echo "  uninstall     - Remove installed executable"
+	@echo "  help          - Show this help message"
+	@echo ""
+	@echo "Environment Variables:"
+	@echo "  COBOL_COMPILER - COBOL compiler command (default: cobc)"
+	@echo ""
+	@echo "Example usage:"
+	@echo "  make all"
+	@echo "  make run"
+	@echo "  make test"
+
+# Phony targets
+.PHONY: all setup compile compile-optimized run debug create-data clean distclean install uninstall syntax test help

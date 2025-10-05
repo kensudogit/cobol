@@ -1,0 +1,17 @@
+=== Fixed Length Records Test Cases ===
+
+Test Case 1: Basic Fixed Length Record
+Description: Test basic fixed length record reading and writing
+Input: 80-character fixed length records
+Expected: All records should be read and written correctly
+
+Test Case 2: Short Record Padding
+Description: Test padding of short records with spaces
+Input: Records shorter than 80 characters
+Expected: Records should be padded with spaces to 80 characters
+
+Test Case 3: Long Record Truncation
+Description: Test truncation of records longer than 80 characters
+Input: Records longer than 80 characters
+Expected: Records should be truncated to 80 characters
+

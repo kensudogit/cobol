@@ -1,0 +1,6 @@
+This is line 1 of the input file.
+This is line 2 of the input file.
+This is line 3 of the input file.
+COBOL is a powerful programming language.
+File I/O operations are essential in business applications.
+This demonstrates sequential file processing.

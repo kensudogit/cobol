@@ -1,0 +1,17 @@
+=== Variable Length Records Test Cases ===
+
+Test Case 1: Basic Variable Length Record
+Description: Test basic variable length record reading and writing
+Input: Variable length records with length prefix
+Expected: All records should be read and written correctly
+
+Test Case 2: Maximum Length Record
+Description: Test maximum length variable record
+Input: Record with maximum allowed length (255 characters)
+Expected: Record should be handled correctly
+
+Test Case 3: Empty Record
+Description: Test empty variable length record
+Input: Record with zero length
+Expected: Empty record should be handled correctly
+
