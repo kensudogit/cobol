@@ -41,7 +41,7 @@
                ASSIGN TO 'SALES.TRAN'
                ORGANIZATION IS RELATIVE
                ACCESS MODE IS SEQUENTIAL
-               RELATIVE KEY IS REL-KEY-ANDEX
+               RELATIVE KEY IS REL-KEY-INDEX
                STATUS IS FILE-STATUS.
            
            *> レポート出力ファイル（行順次編成）
@@ -189,6 +189,7 @@
            05  EOF-FLAG               PIC X(1)      VALUE 'N'.
                88  EOF-REACHED        VALUE 'Y'.
                88  EOF-NOT-REACHED    VALUE 'N'.
+           05  REL-KEY-INDEX          PIC 9(5)     VALUE 1.
        
        *> ================================================================
        *> 処理制御変数
@@ -229,6 +230,10 @@
                10  WORK-YEAR          PIC 9(4).
                10  WORK-MONTH         PIC 99.
                10  WORK-DAY           PIC 99.
+           05  YEAR-PART             PIC X(4).
+           05  MONTH-PART            PIC X(2).
+           05  DAY-PART              PIC X(2).
+           05  COUNT-OF-A            PIC 9(3).
        
        *> ================================================================
        *> レポート関連変数
@@ -253,7 +258,7 @@
        *> プロシージャ部 - COBOLの処理ロジック実行部
        *> ================================================================
        
-       PROCEDURE DIVISION USING PROGRAM-VARIABLES.
+       PROCEDURE DIVISION.
        
        MAIN-PROCEDURE.
            DISPLAY '====================================='
@@ -419,7 +424,7 @@
                        ROUNDED MODE ROUND-HALF-EVEN
            END-IF.
        
-       CALCUBLATE-PERCENTAGES.
+       CALCULATE-PERCENTAGES.
            IF GROSS-SALES > 0
                COMPUTE PERCENTAGE-VALUE = 
                    (CALCULATED-COMMISSION / GROSS-SALES) * 100
@@ -488,7 +493,7 @@
                WHEN CREDIT-LIMIT GREATER THAN OR EQUAL TO 10000
                    DISPLAY 'Standard customer'
                    PERFORM PERFORM-STANDARD-CUSTOMER-PROCESSING
-               WHEN CREDIT-LIMIT LESS THAN THAN 10000
+               WHEN CREDIT-LIMIT LESS THAN 10000
                    DISPLAY 'Basic customer'
                    PERFORM BASIC-CUSTOMER-PROCESSING
                WHEN OTHER
@@ -649,34 +654,367 @@
            DISPLAY '====================================='.
        
        *> ================================================================
-       *> 未実装のサブルーチン（スケルトン）
+       *> 顧客ステータス別処理ルーチン
        *> ================================================================
        
        PROCESS-ACTIVE-CUSTOMER.
-       PROCESS            PROCESS-INACTIVE-CUSTOMER.
-       PROCESS-SUSPENDED-CUSTOMER.
-       PROCESS-UNKNOWN-CUSTOMER.
-       UPDATE-PRODUCT-STATISTICS.
-       PROCESS-LOOP-ITERATION.
-       CROSS-MONTH-PRODUCT-CALCULATION.
-       VALIDATE-DATA.
-       SEARCH-CUSTOMER-BY-STATUS.
-       SEARCH-TABLE-MANUALLY.
-       PREPARE-SORT-DATA.
-       PROCESS-SORTED-DATA.
-       WRITE-REPORT-HEADING.
-       WRITE-MONTH-REPORT-LINE.
-       CHECK-PAGE-BREAK.
-       WRITE-REPORT-FOOTING.
-       GENERATE-REPORT-HEADING.
-       PROCESS-PRODUCT-TABLE.
-       DEMONSTRATE-COMPUTATIONAL-DATA.
-       PERFORM-MATHEMATICAL-CALCULATIONS.
-       PREMIUM-CUSTOMER-PROCESSING.
-       STANDARD-CUSTOMER-PROCESSING.
-       BASIC-CUSTOMER-PROCESSING.
+           DISPLAY 'Processing Active Customer: ' CUSTOMER-NAME
+           *> アクティブ顧客の特別処理
+           IF CREDIT-LIMIT > 0
+               COMPUTE CALCULATED-COMMISSION = CREDIT-LIMIT * 0.02
+               DISPLAY 'Active customer commission calculated: ' CALCULATED-COMMISSION
+           END-IF
+           *> アクティブ顧客の売上にボーナス加算
+           ADD 100 TO GROSS-SALES
+           DISPLAY 'Bonus added for active customer'.
        
-           *> 基本的な処理は実装済みだが、詳細な機能は拡張可能
-           CONTINUE.
+       PROCESS-INACTIVE-CUSTOMER.
+           DISPLAY 'Processing Inactive Customer: ' CUSTOMER-NAME
+           *> 非アクティブ顧客の処理
+           MOVE 0 TO CALCULATED-COMMISSION
+           DISPLAY 'Commission set to zero for inactive customer'
+           *> 非アクティブ顧客の売上からペナルティ減算
+           IF GROSS-SALES > 50
+               SUBTRACT 50 FROM GROSS-SALES
+               DISPLAY 'Penalty applied to inactive customer'
+           END-IF.
+       
+       PROCESS-SUSPENDED-CUSTOMER.
+           DISPLAY 'Processing Suspended Customer: ' CUSTOMER-NAME
+           *> 停止顧客の処理
+           MOVE 0 TO CALCULATED-COMMISSION
+           DISPLAY 'Commission set to zero for suspended customer'
+           *> 停止顧客の売上から大きなペナルティ減算
+           IF GROSS-SALES > 100
+               SUBTRACT 100 FROM GROSS-SALES
+               DISPLAY 'Large penalty applied to suspended customer'
+           END-IF
+           *> 停止理由の記録
+           MOVE 'SUSPENDED' TO ERROR-MESSAGES.
+       
+       PROCESS-UNKNOWN-CUSTOMER.
+           DISPLAY 'Processing Unknown Status Customer: ' CUSTOMER-NAME
+           *> 不明ステータス顧客の処理
+           DISPLAY 'Warning: Customer status is unknown'
+           MOVE 'UNKNOWN_STATUS' TO ERROR-MESSAGES
+           *> デフォルト処理
+           PERFORM PROCESS-ACTIVE-CUSTOMER.
+       
+       *> ================================================================
+       *> 商品統計更新処理
+       *> ================================================================
+       
+       UPDATE-PRODUCT-STATISTICS.
+           DISPLAY 'Updating Product Statistics for: ' PRODUCT-CODE
+           *> 商品別統計の更新
+           SET PRODUCT-INDEX TO 1
+           SEARCH PRODUCT-DATA
+               WHEN PRODUCT-ID(PRODUCT-INDEX) = PRODUCT-CODE
+                   DISPLAY 'Found existing product: ' PRODUCT-NAME(PRODUCT-INDEX)
+                   ADD QUANTITY TO PRODUCT-COUNT
+                   COMPUTE PRODUCT-PRICE(PRODUCT-INDEX) = 
+                       PRODUCT-PRICE(PRODUCT-INDEX) + UNIT-PRICE
+               WHEN PRODUCT-ID(PRODUCT-INDEX) = SPACES
+                   DISPLAY 'Adding new product to table'
+                   MOVE PRODUCT-CODE TO PRODUCT-ID(PRODUCT-INDEX)
+                   MOVE 'New Product' TO PRODUCT-NAME(PRODUCT-INDEX)
+                   MOVE UNIT-PRICE TO PRODUCT-PRICE(PRODUCT-INDEX)
+                   MOVE 'General' TO PRODUCT-CATEGORY(PRODUCT-INDEX)
+                   MOVE 12 TO WARRANTY-MONTHS(PRODUCT-INDEX)
+           END-SEARCH.
+       
+       *> ================================================================
+       *> ループ処理と計算ルーチン
+       *> ================================================================
+       
+       PROCESS-LOOP-ITERATION.
+           DISPLAY 'Processing loop iteration: ' MAIN-LOOP-COUNTER
+           *> ループ内での処理
+           COMPUTE WEIGHTED-AVERAGE = WEIGHTED-AVERAGE + MAIN-LOOP-COUNTER
+           *> 条件に応じた処理
+           IF MAIN-LOOP-COUNTER MOD 2 = 0
+               DISPLAY 'Even iteration - special processing'
+               ADD 10 TO GROSS-SALES
+           ELSE
+               DISPLAY 'Odd iteration - standard processing'
+               ADD 5 TO GROSS-SALES
+           END-IF.
+       
+       CROSS-MONTH-PRODUCT-CALCULATION.
+           DISPLAY 'Cross calculation for month: ' MONTH-INDEX ' product: ' PRODUCT-INDEX
+           *> 月と商品のクロス計算
+           COMPUTE MONTH-SALES(MONTH-INDEX) = 
+               MONTH-SALES(MONTH-INDEX) + (PRODUCT-INDEX * 100)
+           *> 商品カテゴリ別の処理
+           EVALUATE PRODUCT-INDEX
+               WHEN 1
+                   ADD 50 TO MONTH-SALES(MONTH-INDEX)
+               WHEN 2
+                   ADD 75 TO MONTH-SALES(MONTH-INDEX)
+               WHEN 3
+                   ADD 100 TO MONTH-SALES(MONTH-INDEX)
+               WHEN OTHER
+                   ADD 25 TO MONTH-SALES(MONTH-INDEX)
+           END-EVALUATE.
+       
+       *> ================================================================
+       *> データ検証とリトライ処理
+       *> ================================================================
+       
+       VALIDATE-DATA.
+           DISPLAY 'Validating data...'
+           *> データ検証ロジック
+           IF CUSTOMER-ID = 0 OR CUSTOMER-ID = SPACES
+               DISPLAY 'Invalid customer ID'
+               MOVE 'E' TO PROCESSING-STATUS
+               MOVE 'INVALID_CUSTOMER_ID' TO ERROR-MESSAGES
+           ELSE
+               IF TOTAL-AMOUNT < 0
+                   DISPLAY 'Invalid total amount'
+                   MOVE 'E' TO PROCESSING-STATUS
+                   MOVE 'NEGATIVE_AMOUNT' TO ERROR-MESSAGES
+               ELSE
+                   IF QUANTITY = 0
+                       DISPLAY 'Invalid quantity'
+                       MOVE 'E' TO PROCESSING-STATUS
+                       MOVE 'ZERO_QUANTITY' TO ERROR-MESSAGES
+                   ELSE
+                       DISPLAY 'Data validation passed'
+                       MOVE 'C' TO PROCESSING-STATUS
+                   END-IF
+               END-IF
+           END-IF.
+       
+       *> ================================================================
+       *> 検索操作ルーチン
+       *> ================================================================
+       
+       SEARCH-CUSTOMER-BY-STATUS.
+           DISPLAY 'Searching customers by status...'
+           *> ステータス別顧客検索
+           SET SEARCH-INDEX TO 1
+           PERFORM VARYING SEARCH-INDEX FROM 1 BY 1
+               UNTIL SEARCH-INDEX > 50
+               IF FOUND-CUSTOMER-ID(SEARCH-INDEX) = CUSTOMER-ID
+                   DISPLAY 'Customer found in search table'
+                   MOVE CUSTOMER-ID TO FOUND-CUSTOMER-ID(SEARCH-INDEX)
+                   MOVE CUSTOMER-NAME TO FOUND-CUSTOMER-NAME(SEARCH-INDEX)
+                   MOVE 100 TO SCORE(SEARCH-INDEX)
+                   EXIT PERFORM
+               END-IF
+           END-PERFORM.
+       
+       SEARCH-TABLE-MANUALLY.
+           DISPLAY 'Manual table search...'
+           *> 手動テーブル検索
+           SET MONTH-INDEX TO 1
+           PERFORM VARYING MONTH-INDEX FROM 1 BY 1
+               UNTIL MONTH-INDEX > 12
+               IF MONTH-SALES(MONTH-INDEX) > 1000
+                   DISPLAY 'High sales month found: ' MONTH-NAME(MONTH-INDEX)
+                   DISPLAY 'Sales amount: ' MONTH-SALES(MONTH-INDEX)
+               END-IF
+           END-PERFORM.
+       
+       *> ================================================================
+       *> ソート処理ルーチン
+       *> ================================================================
+       
+       PREPARE-SORT-DATA.
+           DISPLAY 'Preparing data for sort...'
+           *> ソート用データの準備
+           OPEN OUTPUT SORT-INFILE
+           PERFORM VARYING MONTH-INDEX FROM 1 BY 1
+               UNTIL MONTH-INDEX > 12
+               MOVE CUSTOMER-ID TO SORT-CUSTOMER-ID
+               MOVE MONTH-NAME(MONTH-INDEX) TO SORT-NAME
+               MOVE MONTH-SALES(MONTH-INDEX) TO SORT-SALES-TOTAL
+               WRITE SORT-RECORD
+           END-PERFORM
+           CLOSE SORT-INFILE.
+       
+       PROCESS-SORTED-DATA.
+           DISPLAY 'Processing sorted data...'
+           *> ソート済みデータの処理
+           OPEN INPUT SORT-OUTFILE
+           PERFORM UNTIL EOF-REACHED
+               READ SORT-OUTFILE
+                   AT END
+                       MOVE 'Y' TO EOF-FLAG
+                   NOT AT END
+                       DISPLAY 'Sorted record: ' SORT-CUSTOMER-ID ' ' SORT-NAME ' ' SORT-SALES-TOTAL
+                       ADD SORT-SALES-TOTAL TO GROSS-SALES
+               END-READ
+           END-PERFORM
+           CLOSE SORT-OUTFILE
+           MOVE 'N' TO EOF-FLAG.
+       
+       *> ================================================================
+       *> レポート生成ルーチン
+       *> ================================================================
+       
+       WRITE-REPORT-HEADING.
+           DISPLAY 'Writing report heading...'
+           *> レポートヘッダーの書き込み
+           MOVE SPACES TO REPORT-LINE
+           STRING REPORT-TITLE DELIMITED BY SIZE
+                  ' - Page ' DELIMITED BY SIZE
+                  PAGE-NUMBER DELIMITED BY SIZE
+                     INTO REPORT-LINE
+           END-STRING
+           WRITE REPORT-LINE
+           MOVE SPACES TO REPORT-LINE
+           STRING REPORT-SUBTITLE DELIMITED BY SIZE
+                  ' - Generated on ' DELIMITED BY SIZE
+                  CURRENT-DATE DELIMITED BY SIZE
+                     INTO REPORT-LINE
+           END-STRING
+           WRITE REPORT-LINE
+           MOVE SPACES TO REPORT-LINE
+           WRITE REPORT-LINE
+           MOVE 3 TO LINE-COUNT.
+       
+       WRITE-MONTH-REPORT-LINE.
+           DISPLAY 'Writing month report line...'
+           *> 月別レポート行の書き込み
+           MOVE SPACES TO REPORT-LINE
+           STRING MONTH-NAME(MONTH-INDEX) DELIMITED BY SIZE
+                  ' Sales: ' DELIMITED BY SIZE
+                  MONTH-SALES(MONTH-INDEX) DELIMITED BY SIZE
+                  ' Customers: ' DELIMITED BY SIZE
+                  MONTH-CUSTOMERS(MONTH-INDEX) DELIMITED BY SIZE
+                     INTO REPORT-LINE
+           END-STRING
+           WRITE REPORT-LINE
+           ADD 1 TO LINE-COUNT.
+       
+       CHECK-PAGE-BREAK.
+           DISPLAY 'Checking page break...'
+           *> ページブレークのチェック
+           IF LINE-COUNT >= LINES-PER-PAGE
+               PERFORM WRITE-REPORT-HEADING
+               ADD 1 TO PAGE-NUMBER
+           END-IF.
+       
+       WRITE-REPORT-FOOTING.
+           DISPLAY 'Writing report footing...'
+           *> レポートフッターの書き込み
+           MOVE SPACES TO REPORT-LINE
+           WRITE REPORT-LINE
+           MOVE SPACES TO REPORT-LINE
+           STRING 'Report generated at ' DELIMITED BY SIZE
+                  PROCESSING-END-TIME DELIMITED BY SIZE
+                  ' - Total Pages: ' DELIMITED BY SIZE
+                  PAGE-NUMBER DELIMITED BY SIZE
+                     INTO REPORT-LINE
+           END-STRING
+           WRITE REPORT-LINE
+           MOVE SPACES TO REPORT-LINE
+           STRING 'Total Gross Sales: ' DELIMITED BY SIZE
+                  GROSS-SALES DELIMITED BY SIZE
+                     INTO REPORT-LINE
+           END-STRING
+           WRITE REPORT-LINE.
+       
+       GENERATE-REPORT-HEADING.
+           DISPLAY 'Generating report heading...'
+           *> レポートヘッダーの生成
+           MOVE SPACES TO REPORT-DATE
+           STRING CURRENT-DATE(1:4) DELIMITED BY SIZE
+                  '/' DELIMITED BY SIZE
+                  CURRENT-DATE(5:2) DELIMITED BY SIZE
+                  '/' DELIMITED BY SIZE
+                  CURRENT-DATE(7:2) DELIMITED BY SIZE
+                     INTO REPORT-DATE
+           END-STRING
+           DISPLAY 'Report date set to: ' REPORT-DATE.
+       
+       PROCESS-PRODUCT-TABLE.
+           DISPLAY 'Processing product table...'
+           *> 商品テーブルの処理
+           PERFORM VARYING PRODUCT-INDEX FROM 1 BY 1
+               UNTIL PRODUCT-INDEX > PRODUCT-COUNT
+               DISPLAY 'Processing product: ' PRODUCT-ID(PRODUCT-INDEX)
+               DISPLAY 'Product name: ' PRODUCT-NAME(PRODUCT-INDEX)
+               DISPLAY 'Product price: ' PRODUCT-PRICE(PRODUCT-INDEX)
+               DISPLAY 'Product category: ' PRODUCT-CATEGORY(PRODUCT-INDEX)
+               DISPLAY 'Warranty months: ' WARRANTY-MONTHS(PRODUCT-INDEX)
+           END-PERFORM.
+       
+       *> ================================================================
+       *> 計算処理と数学演算デモンストレーション
+       *> ================================================================
+       
+       DEMONSTRATE-COMPUTATIONAL-DATA.
+           DISPLAY 'Demonstrating Computational Data...'
+           *> 計算用データのデモンストレーション
+           DISPLAY 'Binary number: ' BINARY-NUMBER
+           DISPLAY 'Packed decimal: ' PACKED-DECIMAL
+           DISPLAY 'Floating point: ' FLOATING-POINT
+           DISPLAY 'Double precision: ' DOUBLE-PRECISION
+           
+           *> 計算用データの演算
+           COMPUTE BINARY-NUMBER = BINARY-NUMBER * 2
+           COMPUTE PACKED-DECIMAL = PACKED-DECIMAL + 100.50
+           COMPUTE FLOATING-POINT = FLOATING-POINT / 2
+           COMPUTE DOUBLE-PRECISION = DOUBLE-PRECISION * 1.5
+           
+           DISPLAY 'After calculations:'
+           DISPLAY 'Binary number: ' BINARY-NUMBER
+           DISPLAY 'Packed decimal: ' PACKED-DECIMAL
+           DISPLAY 'Floating point: ' FLOATING-POINT
+           DISPLAY 'Double precision: ' DOUBLE-PRECISION.
+       
+       PERFORM-MATHEMATICAL-CALCULATIONS.
+           DISPLAY 'Performing Mathematical Calculations...'
+           *> 数学的計算の実行
+           COMPUTE GROSS-SALES = GROSS-SALES + (GROSS-SALES * 0.1)
+           COMPUTE CALCULATED-TAX = GROSS-SALES * TAX-RATE
+           COMPUTE CALCULATED-COMMISSION = GROSS-SALES * COMMISSION-RATE
+           COMPUTE NET-SALES = GROSS-SALES - CALCULATED-TAX - CALCULATED-COMMISSION
+           
+           *> 統計計算
+           IF RECORD-COUNTER > 0
+               COMPUTE WEIGHTED-AVERAGE = GROSS-SALES / RECORD-COUNTER
+           END-IF
+           
+           DISPLAY 'Mathematical calculations completed'
+           DISPLAY 'Gross Sales: ' GROSS-SALES
+           DISPLAY 'Net Sales: ' NET-SALES
+           DISPLAY 'Weighted Average: ' WEIGHTED-AVERAGE.
+       
+       *> ================================================================
+       *> 顧客階層別処理ルーチン
+       *> ================================================================
+       
+       PREMIUM-CUSTOMER-PROCESSING.
+           DISPLAY 'Processing Premium Customer...'
+           *> プレミアム顧客の特別処理
+           COMPUTE CALCULATED-COMMISSION = CREDIT-LIMIT * 0.03
+           ADD 200 TO GROSS-SALES
+           DISPLAY 'Premium customer bonus applied'
+           DISPLAY 'Premium commission: ' CALCULATED-COMMISSION
+           *> プレミアム顧客の特別サービス
+           MOVE 'PREMIUM_SERVICE' TO ERROR-MESSAGES.
+       
+       PERFORM-STANDARD-CUSTOMER-PROCESSING.
+           DISPLAY 'Processing Standard Customer...'
+           *> 標準顧客の処理
+           COMPUTE CALCULATED-COMMISSION = CREDIT-LIMIT * 0.02
+           ADD 100 TO GROSS-SALES
+           DISPLAY 'Standard customer processing completed'
+           DISPLAY 'Standard commission: ' CALCULATED-COMMISSION
+           *> 標準サービス
+           MOVE 'STANDARD_SERVICE' TO ERROR-MESSAGES.
+       
+       BASIC-CUSTOMER-PROCESSING.
+           DISPLAY 'Processing Basic Customer...'
+           *> ベーシック顧客の処理
+           COMPUTE CALCULATED-COMMISSION = CREDIT-LIMIT * 0.01
+           ADD 50 TO GROSS-SALES
+           DISPLAY 'Basic customer processing completed'
+           DISPLAY 'Basic commission: ' CALCULATED-COMMISSION
+           *> ベーシックサービス
+           MOVE 'BASIC_SERVICE' TO ERROR-MESSAGES.
        
        END PROGRAM COMPREHENSIVE-SAMPLE.

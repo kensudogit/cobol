@@ -1,4 +1,4 @@
-# COBOL Development Environment
+ # COBOL Development Environment
 
 このディレクトリは、Windows環境でのCOBOL開発環境を提供します。
 
