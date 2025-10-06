@@ -3,12 +3,13 @@ package com.example.cobol;
 import java.io.*;
 import java.math.BigDecimal;
 import java.math.RoundingMode;
-import java.nio.file.*;
-import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.time.format.DateTimeFormatter;
 import java.util.*;
 import java.util.stream.Collectors;
+import java.util.Properties;
+import java.util.logging.Logger;
+import java.util.logging.Level;
 
 /**
  * COBOL Comprehensive Sample Program - Java Implementation
@@ -36,10 +37,22 @@ public class ComprehensiveSample {
             "COBOL Comprehensive Sample Program\n" +
             "=====================================";
 
+    // メッセージ定数
+    private static final String RECORDS_PROCESSED_MSG = "Records processed: ";
+    private static final String RECORDS_ERROR_MSG = "Records with errors: ";
+    private static final String CUSTOMER_PREFIX = "Customer ";
+
     // ファイルパス定義（実際に使用されるもののみ）
     private static final String CUSTOMER_MASTER_FILE = "CUSTOMER.MAST";
     private static final String SALES_TRANSACTIONS_FILE = "SALES.TRAN";
     private static final String REPORT_OUTPUT_FILE = "DAILY-REPORT.TXT";
+    private static final String CONFIG_FILE = "config.properties";
+
+    // 設定値
+    private static Properties config = new Properties();
+
+    // ログ機能
+    private static final Logger logger = Logger.getLogger(ComprehensiveSample.class.getName());
 
     // ================================================================
     // データ構造クラス定義（COBOLのFILE SECTION/WORKING-STORAGEに対応）
@@ -140,6 +153,7 @@ public class ComprehensiveSample {
         private String zipCode;
 
         public Address() {
+            // デフォルトコンストラクタ - フィールドはデフォルト値で初期化
         }
 
         public String getStreetAddress() {
@@ -308,7 +322,11 @@ public class ComprehensiveSample {
         @Override
         public String toString() {
             return String.format("%s: $%s (%d customers)",
-                    monthName, formatCurrencyStatic(monthSales), monthCustomers);
+                    monthName, formatCurrency(monthSales), monthCustomers);
+        }
+
+        private String formatCurrency(BigDecimal amount) {
+            return String.format("%,.2f", amount);
         }
     }
 
@@ -327,9 +345,9 @@ public class ComprehensiveSample {
     private BigDecimal weightedAverage = BigDecimal.ZERO;
     private BigDecimal percentageValue = BigDecimal.ZERO;
 
-    // 計算用定数
-    private static final BigDecimal TAX_RATE = new BigDecimal("0.08");
-    private static final BigDecimal COMMISSION_RATE = new BigDecimal("0.05");
+    // キャッシュ用変数
+    private boolean statisticsCalculated = false;
+    private Map<Character, Long> statusCountCache = new HashMap<>();
 
     // 処理制御変数
     private int recordsProcessed = 0;
@@ -342,16 +360,14 @@ public class ComprehensiveSample {
      * COBOLのMAIN-PROCEDUREに対応
      */
     public static void main(String[] args) {
-        System.out.println(PROGRAM_TITLE);
-        System.out.println();
+        logger.info(PROGRAM_TITLE);
 
         ComprehensiveSample program = new ComprehensiveSample();
 
         try {
             program.executeProgram();
         } catch (Exception e) {
-            System.err.println("Program execution failed: " + e.getMessage());
-            e.printStackTrace();
+            logger.log(Level.SEVERE, "Program execution failed: " + e.getMessage(), e);
         }
     }
 
@@ -359,8 +375,7 @@ public class ComprehensiveSample {
      * プログラムのメイン実行フロー
      */
     public void executeProgram() {
-        System.out.println("Starting COBOL Comprehensive Sample Program (Java Implementation)");
-        System.out.println();
+        logger.info("Starting COBOL Comprehensive Sample Program (Java Implementation)");
 
         // COBOLのMAIN-PROCEDUREに対応
         initializeProgram();
@@ -399,7 +414,10 @@ public class ComprehensiveSample {
     // ================================================================
 
     private void initializeProgram() {
-        System.out.println("Initializing program...");
+        logger.info("Initializing program...");
+
+        // 設定ファイルの読み込み
+        loadConfiguration();
 
         // 月名テーブルの初期化
         initializeMonthlyTable();
@@ -408,8 +426,20 @@ public class ComprehensiveSample {
         LocalDateTime startTime = LocalDateTime.now();
         logMessage("Program start time: " + startTime.format(TIMESTAMP_FORMAT));
 
-        System.out.println("Program initialized successfully");
-        System.out.println();
+        logger.info("Program initialized successfully");
+    }
+
+    private void loadConfiguration() {
+        try (FileInputStream fis = new FileInputStream(CONFIG_FILE)) {
+            config.load(fis);
+            logMessage("Configuration loaded from " + CONFIG_FILE);
+        } catch (IOException e) {
+            logger.warning("Could not load configuration file, using defaults: " + e.getMessage());
+            // デフォルト設定
+            config.setProperty("tax.rate", "0.08");
+            config.setProperty("commission.rate", "0.05");
+            config.setProperty("log.level", "INFO");
+        }
     }
 
     private void initializeMonthlyTable() {
@@ -431,7 +461,7 @@ public class ComprehensiveSample {
     // ================================================================
 
     private void processCustomerFile() {
-        System.out.println("Processing Customer Master File...");
+        logger.info("Processing Customer Master File...");
 
         try (BufferedReader reader = new BufferedReader(new FileReader(CUSTOMER_MASTER_FILE))) {
             String line;
@@ -439,19 +469,21 @@ public class ComprehensiveSample {
                 processCustomerLine(line);
             }
         } catch (IOException e) {
-            System.err.println("Error reading customer file: " + e.getMessage());
+            logger.severe("Error reading customer file: " + e.getMessage());
             recordsError++;
         }
 
-        System.out.println("Customer file processing completed");
-        System.out.println("Records processed: " + recordsProcessed);
-        System.out.println("Records with errors: " + recordsError);
-        System.out.println();
+        logger.info("Customer file processing completed");
+        logger.info(RECORDS_PROCESSED_MSG + recordsProcessed);
+        logger.info(RECORDS_ERROR_MSG + recordsError);
     }
 
     private void processCustomerLine(String line) {
-        if (line.length() < 125)
+        if (line.length() < 125) {
+            logMessage("WARNING: Customer record too short (" + line.length() + " chars), skipping");
+            recordsError++;
             return; // 最小レコード長チェック
+        }
 
         CustomerRecord customer = new CustomerRecord();
 
@@ -468,12 +500,22 @@ public class ComprehensiveSample {
             customer.setCustomerStatus(line.charAt(133));
             customer.setDateCreated(line.substring(134, 142).trim());
 
+            // データ検証
+            validateCustomerRecord(customer);
+
             customerRecords.add(customer);
             processSingleCustomer(customer);
             recordsProcessed++;
+            logMessage("Successfully processed customer: " + customer.getCustomerId());
 
+        } catch (NumberFormatException e) {
+            logMessage("ERROR: Invalid number format in customer record: " + e.getMessage());
+            recordsError++;
+        } catch (StringIndexOutOfBoundsException e) {
+            logMessage("ERROR: String index out of bounds in customer record: " + e.getMessage());
+            recordsError++;
         } catch (Exception e) {
-            System.err.println("Error processing customer record: " + e.getMessage());
+            logMessage("ERROR: Unexpected error processing customer record: " + e.getMessage());
             recordsError++;
         }
     }
@@ -496,7 +538,7 @@ public class ComprehensiveSample {
     }
 
     private void processSalesTransactions() {
-        System.out.println("Processing Sales Transaction File...");
+        logger.info("Processing Sales Transaction File...");
 
         try (BufferedReader reader = new BufferedReader(new FileReader(SALES_TRANSACTIONS_FILE))) {
             String line;
@@ -504,12 +546,11 @@ public class ComprehensiveSample {
                 processSalesLine(line);
             }
         } catch (IOException e) {
-            System.err.println("Error reading sales file: " + e.getMessage());
+            logger.severe("Error reading sales file: " + e.getMessage());
             recordsError++;
         }
 
-        System.out.println("Sales transactions processing completed");
-        System.out.println();
+        logger.info("Sales transactions processing completed");
     }
 
     private void processSalesLine(String line) {
@@ -533,17 +574,21 @@ public class ComprehensiveSample {
             processTransactionRecord(sales);
 
         } catch (Exception e) {
-            System.err.println("Error processing sales record: " + e.getMessage());
+            logger.severe("Error processing sales record: " + e.getMessage());
             recordsError++;
         }
     }
 
     private void processTransactionRecord(SalesRecord sales) {
+        // 設定ファイルから税率と手数料率を取得
+        BigDecimal taxRate = new BigDecimal(config.getProperty("tax.rate", "0.08"));
+        BigDecimal commissionRate = new BigDecimal(config.getProperty("commission.rate", "0.05"));
+
         // COBOLの演算処理に対応
-        calculatedTax = sales.getTotalAmount().multiply(TAX_RATE)
+        calculatedTax = sales.getTotalAmount().multiply(taxRate)
                 .setScale(2, RoundingMode.HALF_UP);
 
-        calculatedCommission = sales.getTotalAmount().multiply(COMMISSION_RATE)
+        calculatedCommission = sales.getTotalAmount().multiply(commissionRate)
                 .setScale(2, RoundingMode.HALF_UP);
 
         grossSales = grossSales.add(sales.getTotalAmount());
@@ -573,14 +618,19 @@ public class ComprehensiveSample {
     // ================================================================
 
     private void generateStatistics() {
-        System.out.println("Generating Statistics...");
+        logger.info("Generating Statistics...");
 
-        calculateWeightedAverage();
-        calculatePercentages();
+        if (!statisticsCalculated) {
+            calculateWeightedAverage();
+            calculatePercentages();
+            calculateStatusCounts();
+            statisticsCalculated = true;
+        }
+
         displayFinancialSummary();
+        displayStatusStatistics();
 
-        System.out.println("Statistics generation completed");
-        System.out.println();
+        logger.info("Statistics generation completed");
     }
 
     private void calculateWeightedAverage() {
@@ -600,15 +650,44 @@ public class ComprehensiveSample {
         }
     }
 
+    private void calculateStatusCounts() {
+        statusCountCache = customerRecords.parallelStream()
+                .collect(Collectors.groupingBy(
+                        CustomerRecord::getCustomerStatus,
+                        Collectors.counting()));
+    }
+
     private void displayFinancialSummary() {
-        System.out.println("Financial Summary:");
-        System.out.println("==================");
-        System.out.println("Gross Sales:     " + formatCurrency(grossSales));
-        System.out.println("Calculated Tax:   " + formatCurrency(calculatedTax));
-        System.out.println("Commission:       " + formatCurrency(calculatedCommission));
-        System.out.println("Weighted Average: " + formatCurrency(weightedAverage));
-        System.out.println("Percentage:       " + percentageValue + "%");
-        System.out.println();
+        logger.info("Financial Summary:");
+        logger.info("==================");
+        logger.info("Gross Sales:     " + formatCurrency(grossSales));
+        logger.info("Calculated Tax:   " + formatCurrency(calculatedTax));
+        logger.info("Commission:       " + formatCurrency(calculatedCommission));
+        logger.info("Weighted Average: " + formatCurrency(weightedAverage));
+        logger.info("Percentage:       " + percentageValue + "%");
+    }
+
+    private void displayStatusStatistics() {
+        logger.info("Customer Status Statistics:");
+        logger.info("===========================");
+        statusCountCache.forEach((status, count) -> {
+            String statusName = getStatusName(status);
+            logger.info(statusName + ": " + count + " customers");
+        });
+        logger.info("Total Customers: " + customerRecords.size());
+    }
+
+    private String getStatusName(char status) {
+        switch (status) {
+            case 'A':
+                return "Active";
+            case 'I':
+                return "Inactive";
+            case 'S':
+                return "Suspended";
+            default:
+                return "Unknown (" + status + ")";
+        }
     }
 
     // ================================================================
@@ -616,26 +695,25 @@ public class ComprehensiveSample {
     // ================================================================
 
     private void demonstrateStringOperations() {
-        System.out.println("Demonstrating String Operations...");
+        logger.info("Demonstrating String Operations...");
 
         // STRING文（文字列結合）のJava実装
         String fullName = buildFullName("John", "Smith");
-        System.out.println("Full name constructed: " + fullName);
+        logger.info("Full name constructed: " + fullName);
 
         // UNSTRING文（文字列分解）のJava実装
         String[] dateParts = parseDate("20250128");
-        System.out.println("Date parsed - Year: " + dateParts[0] +
+        logger.info("Date parsed - Year: " + dateParts[0] +
                 ", Month: " + dateParts[1] +
                 ", Day: " + dateParts[2]);
 
         // INSPECT文（文字列検査・置換）のJava実装
         String testString = "Hello World Program";
-        System.out.println("Original string: " + testString);
-        System.out.println("After space replacement: " + testString.replace(" ", "-"));
-        System.out.println("Character count before 'W': " + countCharsBefore(testString, 'W'));
+        logger.info("Original string: " + testString);
+        logger.info("After space replacement: " + testString.replace(" ", "-"));
+        logger.info("Character count before 'W': " + countCharsBefore(testString, 'W'));
 
-        System.out.println("String operations completed");
-        System.out.println();
+        logger.info("String operations completed");
     }
 
     private String buildFullName(String firstName, String lastName) {
@@ -657,12 +735,12 @@ public class ComprehensiveSample {
         return index >= 0 ? index : text.length();
     }
 
-    // ================================
+    // ================================================================
     // 条件分岐（COBOLのDEMONSTRATE-CONDITIONAL-LOGIC paragraphに対応）
     // ================================================================
 
     private void demonstrateConditionalLogic() {
-        System.out.println("Demonstrating Conditional Logic...");
+        logger.info("Demonstrating Conditional Logic...");
 
         // 顧客ステータスの評価
         for (CustomerRecord customer : customerRecords) {
@@ -670,18 +748,17 @@ public class ComprehensiveSample {
             evaluateCreditLimit(customer);
         }
 
-        System.out.println("Conditional logic demonstration completed");
-        System.out.println();
+        logger.info("Conditional logic demonstration completed");
     }
 
     private void evaluateCustomerStatus(CustomerRecord customer) {
         // COBOLのIF-ELSE文に対応
         if (customer.getCustomerStatus() == 'A') {
-            System.out.println("Customer " + customer.getCustomerId() + " is active");
+            logger.info(CUSTOMER_PREFIX + customer.getCustomerId() + " is active");
         } else if (customer.getCustomerStatus() == 'I') {
-            System.out.println("Customer " + customer.getCustomerId() + " is inactive");
+            logger.info(CUSTOMER_PREFIX + customer.getCustomerId() + " is inactive");
         } else {
-            System.out.println("Customer " + customer.getCustomerId() + " status unknown");
+            logger.info(CUSTOMER_PREFIX + customer.getCustomerId() + " status unknown");
         }
     }
 
@@ -700,7 +777,7 @@ public class ComprehensiveSample {
             customerType = "Credit limit not set";
         }
 
-        System.out.println("Customer " + customer.getCustomerId() +
+        logger.info(CUSTOMER_PREFIX + customer.getCustomerId() +
                 " credit evaluation: " + customerType);
     }
 
@@ -709,7 +786,7 @@ public class ComprehensiveSample {
     // ================================================================
 
     private void demonstrateLoopConstructs() {
-        System.out.println("Demonstrating Loop Constructs...");
+        logger.info("Demonstrating Loop Constructs...");
 
         // FOR文（COBOLのPERFORM VARYING文に対応）
         demonstrateForLoop();
@@ -720,32 +797,31 @@ public class ComprehensiveSample {
         // ネストしたループ
         demonstrateNestedLoops();
 
-        System.out.println("Loop constructs demonstration completed");
-        System.out.println();
+        logger.info("Loop constructs demonstration completed");
     }
 
     private void demonstrateForLoop() {
-        System.out.println("For loop demonstration:");
+        logger.info("For loop demonstration:");
         for (int i = 1; i <= 10; i++) {
-            System.out.println("  Counter: " + i);
+            logger.info("  Counter: " + i);
             processLoopIteration(i);
         }
     }
 
     private void demonstrateIndexedLoop() {
-        System.out.println("Indexed loop demonstration:");
+        logger.info("Indexed loop demonstration:");
         for (int i = 0; i < monthlySales.size(); i++) {
             MonthlySalesData monthData = monthlySales.get(i);
-            System.out.println("  " + monthData.toString());
+            logger.info("  " + monthData.toString());
         }
     }
 
     private void demonstrateNestedLoops() {
-        System.out.println("Nested loop demonstration:");
+        logger.info("Nested loop demonstration:");
         for (int monthIndex = 0; monthIndex < 3; monthIndex++) { // 最初の3ヶ月
-            System.out.println("  Month: " + monthlySales.get(monthIndex).getMonthName());
+            logger.info("  Month: " + monthlySales.get(monthIndex).getMonthName());
             for (int productIndex = 0; productIndex < 3; productIndex++) {
-                System.out.println("    Product " + (productIndex + 1) + " calculation");
+                logger.info("    Product " + (productIndex + 1) + " calculation");
             }
         }
     }
@@ -755,58 +831,52 @@ public class ComprehensiveSample {
     // ================================================================
 
     private void demonstrateSearchOperations() {
-        System.out.println("Demonstrating Search Operations...");
+        logger.info("Demonstrating Search Operations...");
 
         // 配列検索（COBOLのSEARCH文に対応）
         searchCustomerByStatus('A');
         searchCustomerByName("Smith");
 
-        System.out.println("Search operations demonstration completed");
-        System.out.println();
+        logger.info("Search operations demonstration completed");
     }
 
     private void searchCustomerByStatus(char targetStatus) {
-        System.out.println("Searching customers with status: " + targetStatus);
+        logger.info("Searching customers with status: " + targetStatus);
 
-        List<CustomerRecord> foundCustomers = customerRecords.stream()
+        List<CustomerRecord> foundCustomers = customerRecords.parallelStream()
                 .filter(customer -> customer.getCustomerStatus() == targetStatus)
-                .collect(Collectors.toList());
+                .toList();
 
-        System.out.println("Found " + foundCustomers.size() + " matching customers");
-        for (CustomerRecord customer : foundCustomers) {
-            System.out.println("  " + customer.toString());
-        }
+        logger.info("Found " + foundCustomers.size() + " matching customers");
+        foundCustomers.forEach(customer -> logger.info("  " + customer.toString()));
     }
 
     private void searchCustomerByName(String targetName) {
-        System.out.println("Searching customers with name containing: " + targetName);
+        logger.info("Searching customers with name containing: " + targetName);
 
-        List<CustomerRecord> foundCustomers = customerRecords.stream()
-                .filter(customer -> customer.getCustomerName().contains(targetName))
-                .collect(Collectors.toList());
+        List<CustomerRecord> foundCustomers = customerRecords.parallelStream()
+                .filter(customer -> customer.getCustomerName().toLowerCase().contains(targetName.toLowerCase()))
+                .toList();
 
-        System.out.println("Found " + foundCustomers.size() + " matching customers");
-        for (CustomerRecord customer : foundCustomers) {
-            System.out.println("  " + customer.toString());
-        }
+        logger.info("Found " + foundCustomers.size() + " matching customers");
+        foundCustomers.forEach(customer -> logger.info("  " + customer.toString()));
     }
 
     private void demonstrateSortOperations() {
-        System.out.println("Demonstrating Sort Operations...");
+        logger.info("Demonstrating Sort Operations...");
 
         // 売上金額順でソート
         List<SalesRecord> sortedSales = salesRecords.stream()
                 .sorted((s1, s2) -> s2.getTotalAmount().compareTo(s1.getTotalAmount()))
-                .collect(Collectors.toList());
+                .toList();
 
-        System.out.println("Sales records sorted by amount (descending):");
+        logger.info("Sales records sorted by amount (descending):");
         for (SalesRecord sales : sortedSales) {
-            System.out.println("  $" + formatCurrency(sales.getTotalAmount()) +
+            logger.info("  $" + formatCurrency(sales.getTotalAmount()) +
                     " - Transaction " + sales.getTransactionId());
         }
 
-        System.out.println("Sort operations demonstration completed");
-        System.out.println();
+        logger.info("Sort operations demonstration completed");
     }
 
     // ================================================================
@@ -814,7 +884,7 @@ public class ComprehensiveSample {
     // ================================================================
 
     private void generateDetailReport() {
-        System.out.println("Generating Detailed Report...");
+        logger.info("Generating Detailed Report...");
 
         try (PrintWriter writer = new PrintWriter(new FileWriter(REPORT_OUTPUT_FILE))) {
             writeReportHeading(writer);
@@ -822,12 +892,10 @@ public class ComprehensiveSample {
             writeFinancialSummary(writer);
             writeReportFooting(writer);
 
-            System.out.println("Detailed report generated: " + REPORT_OUTPUT_FILE);
+            logger.info("Detailed report generated: " + REPORT_OUTPUT_FILE);
         } catch (IOException e) {
-            System.err.println("Error generating report: " + e.getMessage());
+            logger.severe("Error generating report: " + e.getMessage());
         }
-
-        System.out.println();
     }
 
     private void writeReportHeading(PrintWriter writer) {
@@ -868,21 +936,19 @@ public class ComprehensiveSample {
     // ================================================================
 
     private void generateReportHeading() {
-        System.out.println("Generating Report Heading...");
-        System.out.println(PROGRAM_TITLE);
-        System.out.println("Sales Analysis and Customer Statistics");
-        System.out.println("Generated on: " + LocalDateTime.now().format(TIMESTAMP_FORMAT));
-        System.out.println();
+        logger.info("Generating Report Heading...");
+        logger.info(PROGRAM_TITLE);
+        logger.info("Sales Analysis and Customer Statistics");
+        logger.info("Generated on: " + LocalDateTime.now().format(TIMESTAMP_FORMAT));
     }
 
     private void processProductTable() {
-        System.out.println("Processing Product Table...");
-        System.out.println("Product table processing completed");
-        System.out.println();
+        logger.info("Processing Product Table...");
+        logger.info("Product table processing completed");
     }
 
     private void demonstrateComputationalData() {
-        System.out.println("Demonstrating Computational Data...");
+        logger.info("Demonstrating Computational Data...");
 
         // BigDecimalを使用したCOBOL的計算
         BigDecimal amount1 = new BigDecimal("12345.67");
@@ -892,19 +958,18 @@ public class ComprehensiveSample {
         BigDecimal product = amount1.multiply(new BigDecimal("2"));
         BigDecimal division = amount1.divide(new BigDecimal("3"), 2, RoundingMode.HALF_UP);
 
-        System.out.println("Computational examples:");
-        System.out.println("  Amount1: " + formatCurrency(amount1));
-        System.out.println("  Amount2: " + formatCurrency(amount2));
-        System.out.println("  Sum: " + formatCurrency(sum));
-        System.out.println("  Product: " + formatCurrency(product));
-        System.out.println("  Division: " + formatCurrency(division));
+        logger.info("Computational examples:");
+        logger.info("  Amount1: " + formatCurrency(amount1));
+        logger.info("  Amount2: " + formatCurrency(amount2));
+        logger.info("  Sum: " + formatCurrency(sum));
+        logger.info("  Product: " + formatCurrency(product));
+        logger.info("  Division: " + formatCurrency(division));
 
-        System.out.println("Computational data demonstration completed");
-        System.out.println();
+        logger.info("Computational data demonstration completed");
     }
 
     private void performMathematicalCalculations() {
-        System.out.println("Performing Mathematical Calculations...");
+        logger.info("Performing Mathematical Calculations...");
 
         // COBOLの基本演算をJava実装
         BigDecimal baseAmount = new BigDecimal("10000.00");
@@ -915,29 +980,80 @@ public class ComprehensiveSample {
         BigDecimal commissionAmount = baseAmount.multiply(commissionRate);
         BigDecimal netAmount = baseAmount.subtract(taxAmount);
 
-        System.out.println("Mathematical calculation results:");
-        System.out.println("  Base Amount: " + formatCurrency(baseAmount));
-        System.out.println("  Tax Amount (8%): " + formatCurrency(taxAmount));
-        System.out.println("  Commission (5%): " + formatCurrency(commissionAmount));
-        System.out.println("  Net Amount: " + formatCurrency(netAmount));
+        logger.info("Mathematical calculation results:");
+        logger.info("  Base Amount: " + formatCurrency(baseAmount));
+        logger.info("  Tax Amount (8%): " + formatCurrency(taxAmount));
+        logger.info("  Commission (5%): " + formatCurrency(commissionAmount));
+        logger.info("  Net Amount: " + formatCurrency(netAmount));
 
-        System.out.println("Mathematical calculations completed");
-        System.out.println();
+        logger.info("Mathematical calculations completed");
     }
 
     private void finalizeProgram() {
-        System.out.println("Finalizing program...");
+        logger.info("Finalizing program...");
 
         LocalDateTime endTime = LocalDateTime.now();
         logMessage("Program end time: " + endTime.format(TIMESTAMP_FORMAT));
 
-        System.out.println("Program execution completed successfully");
-        System.out.println("Records processed: " + recordsProcessed);
-        System.out.println("Records with errors: " + recordsError);
-        System.out.println("=====================================");
+        logger.info("Program execution completed successfully");
+        logger.info("Records processed: " + recordsProcessed);
+        logger.info("Records with errors: " + recordsError);
+        logger.info("=====================================");
 
         // ログファイル出力
         writeLogFile();
+    }
+
+    // ================================================================
+    // データ検証メソッド
+    // ================================================================
+
+    private void validateCustomerRecord(CustomerRecord customer) {
+        if (customer.getCustomerId() <= 0) {
+            throw new IllegalArgumentException("Invalid customer ID: " + customer.getCustomerId());
+        }
+
+        if (customer.getCustomerName() == null || customer.getCustomerName().trim().isEmpty()) {
+            throw new IllegalArgumentException("Customer name cannot be empty");
+        }
+
+        if (customer.getCreditLimit().compareTo(BigDecimal.ZERO) < 0) {
+            throw new IllegalArgumentException("Credit limit cannot be negative: " + customer.getCreditLimit());
+        }
+
+        if (customer.getCustomerStatus() != 'A' && customer.getCustomerStatus() != 'I' &&
+                customer.getCustomerStatus() != 'S') {
+            throw new IllegalArgumentException("Invalid customer status: " + customer.getCustomerStatus());
+        }
+
+        // 日付形式の検証（YYYYMMDD）
+        if (customer.getDateCreated() != null && !customer.getDateCreated().trim().isEmpty()) {
+            validateDateFormat(customer.getDateCreated());
+        }
+    }
+
+    private void validateDateFormat(String dateString) {
+        if (dateString.length() != 8) {
+            throw new IllegalArgumentException("Invalid date format: " + dateString + " (expected YYYYMMDD)");
+        }
+
+        try {
+            int year = Integer.parseInt(dateString.substring(0, 4));
+            int month = Integer.parseInt(dateString.substring(4, 6));
+            int day = Integer.parseInt(dateString.substring(6, 8));
+
+            if (year < 1900 || year > 2100) {
+                throw new IllegalArgumentException("Invalid year: " + year);
+            }
+            if (month < 1 || month > 12) {
+                throw new IllegalArgumentException("Invalid month: " + month);
+            }
+            if (day < 1 || day > 31) {
+                throw new IllegalArgumentException("Invalid day: " + day);
+            }
+        } catch (NumberFormatException e) {
+            throw new IllegalArgumentException("Invalid date format: " + dateString);
+        }
     }
 
     // ================================================================
@@ -945,10 +1061,6 @@ public class ComprehensiveSample {
     // ================================================================
 
     private String formatCurrency(BigDecimal amount) {
-        return String.format("%,.2f", amount);
-    }
-
-    private static String formatCurrencyStatic(BigDecimal amount) {
         return String.format("%,.2f", amount);
     }
 
@@ -961,7 +1073,7 @@ public class ComprehensiveSample {
         try (PrintWriter logWriter = new PrintWriter(new FileWriter("lambda.log"))) {
             logWriter.print(logMessages.toString());
         } catch (IOException e) {
-            System.err.println("Error writing log file: " + e.getMessage());
+            logger.severe("Error writing log file: " + e.getMessage());
         }
     }
 
@@ -985,7 +1097,89 @@ public class ComprehensiveSample {
     private void processLoopIteration(int iteration) {
         // 単独処理の具体例
         if (iteration % 3 == 0) {
-            System.out.println("    Multiple of 3 found: " + iteration);
+            logger.info("    Multiple of 3 found: " + iteration);
         }
+    }
+
+    // ================================================================
+    // デバッグ用メソッド（ステップ実行用）
+    // ================================================================
+
+    public void debugInitializeProgram() {
+        System.out.println("🔍 デバッグ: 初期化処理開始");
+        initializeProgram();
+        System.out.println("✅ デバッグ: 初期化処理完了");
+    }
+
+    public void debugProcessCustomerFile() {
+        System.out.println("🔍 デバッグ: 顧客ファイル処理開始");
+        processCustomerFile();
+        System.out.println("✅ デバッグ: 顧客ファイル処理完了 - 処理件数: " + recordsProcessed);
+    }
+
+    public void debugProcessSalesTransactions() {
+        System.out.println("🔍 デバッグ: 売上トランザクション処理開始");
+        processSalesTransactions();
+        System.out.println("✅ デバッグ: 売上トランザクション処理完了");
+    }
+
+    public void debugGenerateStatistics() {
+        System.out.println("🔍 デバッグ: 統計生成開始");
+        generateStatistics();
+        System.out.println("✅ デバッグ: 統計生成完了");
+    }
+
+    public void debugDemonstrateStringOperations() {
+        System.out.println("🔍 デバッグ: 文字列操作デモ開始");
+        demonstrateStringOperations();
+        System.out.println("✅ デバッグ: 文字列操作デモ完了");
+    }
+
+    public void debugDemonstrateConditionalLogic() {
+        System.out.println("🔍 デバッグ: 条件分岐デモ開始");
+        demonstrateConditionalLogic();
+        System.out.println("✅ デバッグ: 条件分岐デモ完了");
+    }
+
+    public void debugDemonstrateLoopConstructs() {
+        System.out.println("🔍 デバッグ: ループ処理デモ開始");
+        demonstrateLoopConstructs();
+        System.out.println("✅ デバッグ: ループ処理デモ完了");
+    }
+
+    public void debugDemonstrateSearchOperations() {
+        System.out.println("🔍 デバッグ: 検索操作デモ開始");
+        demonstrateSearchOperations();
+        System.out.println("✅ デバッグ: 検索操作デモ完了");
+    }
+
+    public void debugDemonstrateSortOperations() {
+        System.out.println("🔍 デバッグ: ソート操作デモ開始");
+        demonstrateSortOperations();
+        System.out.println("✅ デバッグ: ソート操作デモ完了");
+    }
+
+    public void debugGenerateDetailReport() {
+        System.out.println("🔍 デバッグ: レポート生成開始");
+        generateDetailReport();
+        System.out.println("✅ デバッグ: レポート生成完了");
+    }
+
+    public void debugFinalizeProgram() {
+        System.out.println("🔍 デバッグ: 終了処理開始");
+        finalizeProgram();
+        System.out.println("✅ デバッグ: 終了処理完了");
+    }
+
+    // デバッグ用の状態表示メソッド
+    public void debugPrintState() {
+        System.out.println("\n📊 現在の状態:");
+        System.out.println("  - 処理済みレコード数: " + recordsProcessed);
+        System.out.println("  - エラーレコード数: " + recordsError);
+        System.out.println("  - 顧客レコード数: " + customerRecords.size());
+        System.out.println("  - 売上レコード数: " + salesRecords.size());
+        System.out.println("  - 総売上: " + formatCurrency(grossSales));
+        System.out.println("  - 計算済み税金: " + formatCurrency(calculatedTax));
+        System.out.println("  - 計算済み手数料: " + formatCurrency(calculatedCommission));
     }
 }

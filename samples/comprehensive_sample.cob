@@ -492,7 +492,7 @@
                    PERFORM PREMIUM-CUSTOMER-PROCESSING
                WHEN CREDIT-LIMIT GREATER THAN OR EQUAL TO 10000
                    DISPLAY 'Standard customer'
-                   PERFORM PERFORM-STANDARD-CUSTOMER-PROCESSING
+                   PERFORM STANDARD-CUSTOMER-PROCESSING
                WHEN CREDIT-LIMIT LESS THAN 10000
                    DISPLAY 'Basic customer'
                    PERFORM BASIC-CUSTOMER-PROCESSING
