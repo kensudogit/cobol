@@ -1,6 +1,22 @@
- # COBOL Development Environment
+# COBOL Modernization Reference — GnuCOBOL / Java Mapping
 
-このディレクトリは、Windows環境でのCOBOL開発環境を提供します。
+> **Legacy Language Modernization** — GnuCOBOLの実行環境と実践サンプルに加え、COBOLのデータ定義・ファイル処理・制御構造をJavaへ移行する際の変換パターンをまとめた技術リファレンスです。
+>
+> **Stack:** COBOL · GnuCOBOL · Java · File I/O · Data Mapping · Migration Patterns
+
+## Modernization Focus
+
+- PIC句からJava型へのデータマッピング
+- COBOLグループ項目からJavaオブジェクトへの構造変換
+- OCCURSからJava Collectionへの移行
+- Sequential File処理からJava I/Oへの変換
+- EVALUATE / PERFORMなど制御構造の対応付け
+- COBOL開発者がJavaへ移行する際の比較学習
+- Legacy ModernizationのPoC・教育・移行設計への活用
+
+## Portfolio Context
+
+This repository is the **COBOL-to-Java technical reference** of the Legacy Modernization portfolio. `Code_Migration` provides AI-assisted conversion, while `transplant` demonstrates system-level COBOL/CICS/DB2 migration architecture.
 
 ## ディレクトリ構造
 
